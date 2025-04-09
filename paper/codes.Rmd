@@ -1,0 +1,103 @@
+---
+title: "Factorial Analysis of Arrival Delays in NYC"
+---
+
+```{r setup, include=FALSE}
+# Data cleaning
+#### Workspace setup ####
+library(dplyr)
+library(tidyr)
+
+#### Clean data ####
+raw_data <- read_csv("data/01-raw_data/Airline_Delay_Cause.csv")
+
+cleaned_data <- raw_data %>%
+  filter(carrier %in% c("DL", "AA"),
+         airport %in% c("EWR", "JFK", "LGA")) %>%
+  mutate(
+    avg_delay = arr_delay / arr_flights,
+    season = case_when(
+      month %in% c(3, 4, 5) ~ "Spring",
+      month %in% c(6, 7, 8) ~ "Summer",
+      month %in% c(9, 10, 11) ~ "Fall",
+      month %in% c(12, 1, 2) ~ "Winter"
+    ),
+    season = factor(season, levels = c("Spring", "Summer", "Fall", "Winter"))
+  ) %>%
+  filter(!is.na(avg_delay),
+         arr_flights >= 2) %>%
+  select(carrier, airport, season, avg_delay) %>%
+  mutate(across(c(carrier, airport, season), as.factor)) %>%
+  drop_na()
+
+#### Save data ####
+write_csv(cleaned_data, "data/02-analysis_data/cleaned_data.csv")
+```
+
+```{r}
+# Data modelling
+#### Workspace setup ####
+library(tidyverse)
+
+#### Read data ####
+analysis_data <- read_csv("data/02-analysis_data/cleaned_data.csv")
+
+### Model data ####
+model <- aov(avg_delay ~ carrier * airport * season, data = cleaned_data)
+print(model)
+summary(model)
+
+#### Save model ####
+saveRDS(
+  model,
+  file = "models/nyc_model.rds"
+)
+```
+
+```{r}
+# file loading
+library(tidyverse)
+
+cleaned_data <- read_csv("../data/02-analysis_data/cleaned_data.csv")
+nyc_model <- readRDS("../models/nyc_model.rds")
+```
+
+
+```{r}
+# Plot 1 - Mean Arrival Delay by Airport in New York City (2024)
+
+cleaned_data %>%
+  group_by(airport) %>%
+  summarise(mean_delay = mean(avg_delay), .groups = "drop") %>%
+  ggplot(aes(x = airport, y = mean_delay, fill = airport)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = "Airport", y = "Average Delay (minutes)") +
+  theme_minimal()
+```
+
+```{r}
+# Plot 2 - Interaction Plot of Average Delay by Season and Airline
+
+interaction.plot(
+  x.factor = cleaned_data$season,
+  trace.factor = cleaned_data$carrier,
+  response = cleaned_data$avg_delay,
+  fun = mean,
+  type = "b",
+  col = c("blue", "red"),
+  pch = c(1, 19),
+  xlab = "Season",
+  ylab = "Average Delay (minutes)",
+  legend = TRUE,              
+  trace.label = ""             
+)
+```
+
+```{r}
+#Plots in appendix
+
+plot(nyc_model)
+shapiro.test(residuals(nyc_model))
+```
+
+
